@@ -1,0 +1,13 @@
+# CMake generated Testfile for 
+# Source directory: /Users/nick/Desktop/Source
+# Build directory: /Users/nick/Desktop/Source/bin
+# 
+# This file replicates the SUBDIRS() and ADD_TEST() commands from the source
+# tree CMakeLists.txt file, skipping any SUBDIRS() or ADD_TEST() commands
+# that are excluded by CMake control structures, i.e. IF() commands.
+#
+# The next line is critical for Dart to work
+# Duh :-)
+
+ADD_TEST(Run1 "itkBSplineScatteredDataPointSetToImageFilterTest" "/Users/nick/Desktop/Source/brain.hdr" "/Users/nick/Desktop/Source/bin/brain_out.hdr")
+ADD_TEST(CompareImage1 "ImageCompare" "/Users/nick/Desktop/Source/brain_smooth.hdr" "/Users/nick/Desktop/Source/bin/brain_out.hdr")

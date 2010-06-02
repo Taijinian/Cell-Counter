@@ -1,0 +1,7 @@
+*.dir
+*.sln
+*.vcproj*
+BUILD/*
+Debug/*
+win*-vs*
+*.*~
