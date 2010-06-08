@@ -36,13 +36,15 @@ qt4_wrap_ui (UIC_OUTFILES ${UI_FILES})
 #ENDIF(Qt4_FOUND)
 
 SET(executable_target cell_counter)
-SET (SRC 
-	main.cpp
-	itkReadITKImage3DSegmentShowVTK.cxx)
+
+SET (SRC
+	 main.cpp)
+	 
 INCLUDE_DIRECTORIES(
-	    ../bspline_scattered_data_approximation/Source
-	    ../AdaptiveOtsuThresholdImageFilter/code
+	    bspline_scattered_data_approximation/Source
+	    AdaptiveOtsuThresholdImageFilter/code
 	)
+	
 ADD_EXECUTABLE( ${executable_target} 
 		${SRC}
 		${MOC_OUTFILES}
