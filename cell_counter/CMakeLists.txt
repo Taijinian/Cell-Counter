@@ -37,6 +37,9 @@ qt4_wrap_ui (UIC_OUTFILES ${UI_FILES})
 
 SET(executable_target cell_counter)
 
+#warning C4996: 'std::copy': Function call with parameters that may be unsafe
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -wd4996")
+
 SET (SRC
 	 main.cpp)
 	 

@@ -17,10 +17,12 @@
 #include "itkImageFileReader.h"
 
 
-//typedef itk::RGBPixel<unsigned char> PixelType;
-typedef unsigned char PixelType;
 const unsigned int ImageDimension = 2;
-typedef itk::Image< PixelType, ImageDimension > ImageType;
+typedef itk::RGBPixel<unsigned char> OriginalPixelType;
+typedef itk::Image< OriginalPixelType, ImageDimension > OriginalImageType;
+
+typedef unsigned char BinaryPixelType;
+typedef itk::Image< BinaryPixelType, ImageDimension > BinaryImageType;
 
 template <typename VTK_Exporter, typename ITK_Importer>
 void ConnectVTK2ITKPipelines(VTK_Exporter* exporter, ITK_Importer importer)
@@ -45,7 +47,8 @@ void addMenu(QMainWindow& mainWindow)
     //fileMenu.addAction("&Open Images", fileOpener, SLOT(openImages()));
 }
 
-itk::ImageFileReader<ImageType>::Pointer readImage(std::string const& fileName)
+template <typename ImageType>
+typename itk::ImageFileReader<ImageType>::Pointer readImage(std::string const& fileName)
 {
   itk::ImageFileReader<ImageType>::Pointer reader = itk::ImageFileReader<ImageType>::New();
   reader->SetFileName(fileName.c_str());
@@ -57,26 +60,19 @@ itk::ImageFileReader<ImageType>::Pointer readImage(std::string const& fileName)
   return reader;
 }
 
-void displayImage(vtkImageAlgorithm& image,
-                  QVTKWidget&        renderWidget)
+
+void displayImage(vtkImageAlgorithm&           image,
+                  vtkSmartPointer<vtkRenderer> imageRenderer,
+                  double                       opacity = 1.0)
 {
-#if 0
-  vtkImageViewer2* image_view = vtkImageViewer2::New();
-  image_view->SetInputConnection(image.GetOutputPort());
 
-  renderWidget.SetRenderWindow(image_view->GetRenderWindow());
-  image_view->SetupInteractor(renderWidget.GetRenderWindow()->GetInteractor());
-
-  image_view->SetColorLevel(138.5);
-  image_view->SetColorWindow(233);
-#else
   vtkSmartPointer<vtkImageActor> imageActor = vtkSmartPointer<vtkImageActor>::New();
+  imageActor->SetOpacity(opacity);
   imageActor->SetInput(image.GetOutput());
-  vtkSmartPointer<vtkRenderer> imageRenderer = vtkSmartPointer<vtkRenderer>::New();
-  imageRenderer->SetBackground(0.1, 0.1, 0.2);
+  static double zCoord = 0;
+  imageActor->SetPosition(1, 1, zCoord);
+  zCoord += 20;
   imageRenderer->AddActor(imageActor);
-  renderWidget.GetRenderWindow()->AddRenderer(imageRenderer);
-#endif
 }
 
 int main(int argc, char** argv)
@@ -90,43 +86,47 @@ int main(int argc, char** argv)
 
   QVTKWidget vtkWidget;
   mainWindow.setCentralWidget(&vtkWidget);
+  vtkSmartPointer<vtkRenderer> imageRenderer = vtkSmartPointer<vtkRenderer>::New();
+  vtkWidget.GetRenderWindow()->AddRenderer(imageRenderer);
+  imageRenderer->SetBackground(0.1, 0.1, 0.2);
 
   //read image
-  itk::ImageFileReader<ImageType>::Pointer itkImage = readImage("c:\\projects\\cell_counter\\data\\mjc-20100424-0011.tif");
+  itk::ImageFileReader<OriginalImageType>::Pointer originalItkImage = 
+        readImage<OriginalImageType>("c:\\projects\\cell_counter\\data\\mjc-20100424-0011.tif");
   
   //convert itk image to vtk image
-  ItkToVtkImageExporter<ImageType> itkToVtkImageExporter(*itkImage->GetOutput());
+  ItkToVtkImageExporter<OriginalImageType> originalImageItkToVtkExporter(*originalItkImage->GetOutput());
 
   //display original image
-  displayImage(itkToVtkImageExporter.vtkImage(), vtkWidget);
+  displayImage(originalImageItkToVtkExporter.vtkImage(), imageRenderer);
 
-  //
-  ImageType::SpacingType spacing = itkImage->GetOutput()->GetSpacing();
-  ImageType::SizeType size = itkImage->GetOutput()->GetLargestPossibleRegion().GetSize();
+  //create a binary threshold image
+  OriginalImageType::SpacingType spacing = originalItkImage->GetOutput()->GetSpacing();
+  OriginalImageType::SizeType size = originalItkImage->GetOutput()->GetLargestPossibleRegion().GetSize();
 
   const unsigned int radius = 20;
-  ImageType::SizeType m_radius;
+  OriginalImageType::SizeType m_radius;
   for( unsigned int i = 0; i < ImageDimension; i++ )
-    m_radius[i] = static_cast<ImageType::SizeType::SizeValueType>( radius/spacing[i] );
+    m_radius[i] = static_cast<OriginalImageType::SizeType::SizeValueType>( radius/spacing[i] );
 
-  ImageType::Pointer output;
-  itk::AdaptiveOtsuThresholdImageFilter<ImageType, ImageType>::Pointer thresholdFilter = 
-                        itk::AdaptiveOtsuThresholdImageFilter<ImageType, ImageType>::New();
-  thresholdFilter->SetInput(itkImage->GetOutput());
+  OriginalImageType::Pointer output;
+  itk::AdaptiveOtsuThresholdImageFilter<OriginalImageType, BinaryImageType>::Pointer thresholdFilter = 
+                        itk::AdaptiveOtsuThresholdImageFilter<OriginalImageType, BinaryImageType>::New();
+  thresholdFilter->SetInput(originalItkImage->GetOutput());
   thresholdFilter->SetInsideValue(255);
   //unsigned char outsideValue[]= {0,0,0};
   //thresholdFilter->SetOutsideValue(itk::RGBPixel<unsigned char>(outsideValue));
   thresholdFilter->SetOutsideValue(0);
   thresholdFilter->SetNumberOfHistogramBins(256);
-  thresholdFilter->SetNumberOfControlPoints(5000);
+  thresholdFilter->SetNumberOfControlPoints(10);
   thresholdFilter->SetNumberOfLevels(3);
   thresholdFilter->SetNumberOfSamples(50);
   thresholdFilter->SetRadius(m_radius);
   thresholdFilter->Update();
   //convert itk image to vtk image
-  ItkToVtkImageExporter<ImageType> thresholdItkToVtkImageExporter(*thresholdFilter->GetOutput());
+  ItkToVtkImageExporter<BinaryImageType> thresholdItkToVtkImageExporter(*thresholdFilter->GetOutput());
   //display threshold image
-  displayImage(thresholdItkToVtkImageExporter.vtkImage(), vtkWidget);
+  displayImage(thresholdItkToVtkImageExporter.vtkImage(), imageRenderer, 0.3);
 
   //
   mainWindow.show();
