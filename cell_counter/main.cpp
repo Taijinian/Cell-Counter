@@ -14,6 +14,7 @@
 
 #include "itkTIFFImageIO.h"
 #include "itkRGBPixel.h"
+#include "itkRGBToLuminanceImageFilter.h"
 #include "itkImageFileReader.h"
 
 
@@ -21,8 +22,8 @@ const unsigned int ImageDimension = 2;
 typedef itk::RGBPixel<unsigned char> OriginalPixelType;
 typedef itk::Image< OriginalPixelType, ImageDimension > OriginalImageType;
 
-typedef unsigned char BinaryPixelType;
-typedef itk::Image< BinaryPixelType, ImageDimension > BinaryImageType;
+typedef unsigned char GrayscalePixelType;
+typedef itk::Image< GrayscalePixelType, ImageDimension > GrayscaleImageType;
 
 template <typename VTK_Exporter, typename ITK_Importer>
 void ConnectVTK2ITKPipelines(VTK_Exporter* exporter, ITK_Importer importer)
@@ -60,6 +61,37 @@ typename itk::ImageFileReader<ImageType>::Pointer readImage(std::string const& f
   return reader;
 }
 
+template <class InputImageType>
+itk::ImageSource<GrayscaleImageType>::Pointer createGrayscaleImage(InputImageType& itkImage)
+{
+    typedef itk::RGBToLuminanceImageFilter<InputImageType, GrayscaleImageType> GrayscaleFilterType;
+    GrayscaleFilterType::Pointer grayscaleFilter = GrayscaleFilterType::New();
+    grayscaleFilter->SetInput(&itkImage);
+    return grayscaleFilter;
+}
+
+itk::ImageSource<GrayscaleImageType>::Pointer createThresholdImage(itk::ImageSource<GrayscaleImageType>::Pointer imageSource)
+{
+    typedef itk::AdaptiveOtsuThresholdImageFilter<GrayscaleImageType, GrayscaleImageType> ThresholdFilterType;
+    ThresholdFilterType::Pointer thresholdFilter = ThresholdFilterType::New();
+    thresholdFilter->SetInput(imageSource->GetOutput());
+    thresholdFilter->SetInsideValue(255);
+    thresholdFilter->SetOutsideValue(0);
+    thresholdFilter->SetNumberOfHistogramBins(256);
+    thresholdFilter->SetNumberOfControlPoints(10);
+    thresholdFilter->SetNumberOfLevels(3);
+    thresholdFilter->SetNumberOfSamples(50);
+
+    OriginalImageType::SpacingType spacing = imageSource->GetOutput()->GetSpacing();
+    const unsigned int radius = 20;
+    GrayscaleImageType::SizeType m_radius;
+    for( unsigned int i = 0; i < ImageDimension; i++ )
+        m_radius[i] = static_cast<GrayscaleImageType::SizeType::SizeValueType>( radius/spacing[i] );
+    thresholdFilter->SetRadius(m_radius);
+    
+    //thresholdFilter->Update();
+    return thresholdFilter;
+}
 
 void displayImage(vtkImageAlgorithm&           image,
                   vtkSmartPointer<vtkRenderer> imageRenderer,
@@ -74,6 +106,7 @@ void displayImage(vtkImageAlgorithm&           image,
   zCoord += 20;
   imageRenderer->AddActor(imageActor);
 }
+
 
 int main(int argc, char** argv)
 {
@@ -92,7 +125,7 @@ int main(int argc, char** argv)
 
   //read image
   itk::ImageFileReader<OriginalImageType>::Pointer originalItkImage = 
-        readImage<OriginalImageType>("c:\\projects\\cell_counter\\data\\mjc-20100424-0011.tif");
+        readImage<OriginalImageType>("C:\\Users\\jenya\\projects\\Cell-Counter\\cell_counter\\data\\mjc-20100424-0011.tif");
   
   //convert itk image to vtk image
   ItkToVtkImageExporter<OriginalImageType> originalImageItkToVtkExporter(*originalItkImage->GetOutput());
@@ -100,31 +133,15 @@ int main(int argc, char** argv)
   //display original image
   displayImage(originalImageItkToVtkExporter.vtkImage(), imageRenderer);
 
+  //create grayscale image
+  itk::ImageSource<GrayscaleImageType>::Pointer grayscaleImage = createGrayscaleImage(*originalItkImage->GetOutput());
+
   //create a binary threshold image
-  OriginalImageType::SpacingType spacing = originalItkImage->GetOutput()->GetSpacing();
-  OriginalImageType::SizeType size = originalItkImage->GetOutput()->GetLargestPossibleRegion().GetSize();
+  itk::ImageSource<GrayscaleImageType>::Pointer thresholdImage = createThresholdImage(grayscaleImage);
 
-  const unsigned int radius = 20;
-  OriginalImageType::SizeType m_radius;
-  for( unsigned int i = 0; i < ImageDimension; i++ )
-    m_radius[i] = static_cast<OriginalImageType::SizeType::SizeValueType>( radius/spacing[i] );
-
-  OriginalImageType::Pointer output;
-  itk::AdaptiveOtsuThresholdImageFilter<OriginalImageType, BinaryImageType>::Pointer thresholdFilter = 
-                        itk::AdaptiveOtsuThresholdImageFilter<OriginalImageType, BinaryImageType>::New();
-  thresholdFilter->SetInput(originalItkImage->GetOutput());
-  thresholdFilter->SetInsideValue(255);
-  //unsigned char outsideValue[]= {0,0,0};
-  //thresholdFilter->SetOutsideValue(itk::RGBPixel<unsigned char>(outsideValue));
-  thresholdFilter->SetOutsideValue(0);
-  thresholdFilter->SetNumberOfHistogramBins(256);
-  thresholdFilter->SetNumberOfControlPoints(10);
-  thresholdFilter->SetNumberOfLevels(3);
-  thresholdFilter->SetNumberOfSamples(50);
-  thresholdFilter->SetRadius(m_radius);
-  thresholdFilter->Update();
   //convert itk image to vtk image
-  ItkToVtkImageExporter<BinaryImageType> thresholdItkToVtkImageExporter(*thresholdFilter->GetOutput());
+  ItkToVtkImageExporter<GrayscaleImageType> thresholdItkToVtkImageExporter(*thresholdImage->GetOutput());
+
   //display threshold image
   displayImage(thresholdItkToVtkImageExporter.vtkImage(), imageRenderer, 0.3);
 
